@@ -1,0 +1,75 @@
+import requests, requests.auth, json, pprint, bs4, os, time
+from selenium import webdriver
+
+# script inputs
+
+limit = '25'
+period = 'month'
+subreddit = 'zzzzzz'
+
+folderName = subreddit
+os.makedirs(folderName, exist_ok=True)
+
+# ---------------------
+# authorization
+# ---------------------
+
+# making authorization request
+clientId = 'zzzzzz'
+clientSecret = 'zzzzzzz'
+userAgent = 'Scraping Script by SK'
+
+clientAuth = requests.auth.HTTPBasicAuth(clientId, clientSecret)
+
+postData = {'grant_type': 'password', 'username': 'zzzzzz', 'password': 'zzzzz'}
+headers = {'User-Agent': userAgent}
+response = requests.post("https://www.reddit.com/api/v1/access_token",
+                         auth=clientAuth, data=postData, headers=headers)
+
+token = 'bearer ' + response.json()['access_token']
+
+# using token
+authHeaders = {"Authorization": token, "User-Agent": userAgent}
+auth = requests.get("https://oauth.reddit.com/api/v1/me", headers=authHeaders)
+
+# ---------------------
+# downloading
+# ---------------------
+
+# get json
+jsonUrl = 'https://www.reddit.com/r/' + subreddit + '/top.json?limit=' + limit + '&t=' + period
+jsonContent = requests.get(jsonUrl)
+jsonAsPython = json.loads(jsonContent.text)
+
+# download all titles and links
+# add functionality to rename files to title
+# add functionality to download gfycat
+#   if direct file, download. Otherwise scrape appropriate url
+
+for i in range(0, len(jsonAsPython['data']['children'])):
+    linkTitle = jsonAsPython['data']['children'][i]['data']['title']
+    linkContentUrl = jsonAsPython['data']['children'][i]['data']['url']
+    linkContentScore = jsonAsPython['data']['children'][i]['data']['score']
+    print('[' + str(linkContentScore) + '] ' + linkTitle[:50])
+    # direct link image files
+    if linkContentUrl[-3:] in ['jpg', 'peg', 'png', 'gif']:
+        res_content = requests.get(linkContentUrl)
+        dlFile = open(os.path.join(folderName, os.path.basename(linkContentUrl)), 'wb')
+        for chunk in res_content.iter_content(100000):
+            dlFile.write(chunk)
+        dlFile.close()
+        print('DOWNLOADED')
+    # gifv files
+    elif linkContentUrl[-4:] in ['gifv']:
+        res_content = requests.get(linkContentUrl[:-1])
+        dlFile = open(os.path.join(folderName, os.path.basename(linkContentUrl[:-1])), 'wb')
+        for chunk in res_content.iter_content(100000):
+            dlFile.write(chunk)
+        dlFile.close()
+        print('DOWNLOADED')
+    # imgur nondirect files
+    # gfycat links
+    # else
+    else:
+        print('NOT A DOWNLOADABLE FILE')
+
