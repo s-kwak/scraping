@@ -1,5 +1,4 @@
 import requests, requests.auth, json, pprint, bs4, os, time
-from selenium import webdriver
 
 # script inputs
 
@@ -41,10 +40,8 @@ jsonUrl = 'https://www.reddit.com/r/' + subreddit + '/top.json?limit=' + limit +
 jsonContent = requests.get(jsonUrl)
 jsonAsPython = json.loads(jsonContent.text)
 
-# download all titles and links
-# add functionality to rename files to title
-# add functionality to download gfycat
-#   if direct file, download. Otherwise scrape appropriate url
+# DOESNT DOWNLOAD GIFV WITHIN IMGUR ALBUMS PROPERLY
+# ALSO DOESNT DOWNLOAD SINGLE IMAGE FILES IF ZOOMED OR ALBUMS IF NONZOOMED
 
 for i in range(0, len(jsonAsPython['data']['children'])):
     linkTitle = jsonAsPython['data']['children'][i]['data']['title']
@@ -52,13 +49,18 @@ for i in range(0, len(jsonAsPython['data']['children'])):
     linkContentScore = jsonAsPython['data']['children'][i]['data']['score']
     print('[' + str(linkContentScore) + '] ' + linkTitle[:50])
     # direct link image files
-    if linkContentUrl[-3:] in ['jpg', 'peg', 'png', 'gif']:
+    # if linkContentUrl[-3:] in ['jpg', 'peg', 'png', 'gif']:
+    if max(linkContentUrl.find('.jpg'), linkContentUrl.find('.jpeg'), linkContentUrl.find('.png'), linkContentUrl.find('.gif')) >= 0 and linkContentUrl.find('.gifv') == -1:
+        if linkContentUrl.find('?') > -1:
+            linkContentUrl = linkContentUrl[:-2]
+        else:
+            linkContentUrl = linkContentUrl
         res_content = requests.get(linkContentUrl)
         dlFile = open(os.path.join(folderName, os.path.basename(linkContentUrl)), 'wb')
         for chunk in res_content.iter_content(100000):
             dlFile.write(chunk)
         dlFile.close()
-        print('DOWNLOADED')
+        print('  DOWNLOADED ' + str(i+1) + ' of ' + str(len(jsonAsPython['data']['children'])))
     # gifv files
     elif linkContentUrl[-4:] in ['gifv']:
         res_content = requests.get(linkContentUrl[:-1])
@@ -66,10 +68,43 @@ for i in range(0, len(jsonAsPython['data']['children'])):
         for chunk in res_content.iter_content(100000):
             dlFile.write(chunk)
         dlFile.close()
-        print('DOWNLOADED')
-    # imgur nondirect files
+        print('  DOWNLOADED ' + str(i+1) + ' of ' + str(len(jsonAsPython['data']['children'])))
+    # imgur albums (only visible images)
+    elif jsonAsPython['data']['children'][i]['data']['url'].find('gallery') > 0 or jsonAsPython['data']['children'][i]['data']['url'].find('/a/') > 0:
+        res = requests.get(linkContentUrl)
+        soup = bs4.BeautifulSoup(res.text, 'lxml')
+        images = soup.find_all('a', class_='zoom')
+        for j in range(len(images)):
+            imgUrl = 'https://' + images[j].get('href')[2:]
+            res_content = requests.get(imgUrl)
+            dlFile = open(os.path.join(folderName, os.path.basename(imgUrl)), 'wb')
+            for chunk in res_content.iter_content(100000):
+                dlFile.write(chunk)
+            dlFile.close()
+        print('  DOWNLOADED ' + str(i+1) + ' of ' + str(len(jsonAsPython['data']['children'])))
+    # imgur single image links
+    elif jsonAsPython['data']['children'][i]['data']['domain'] == 'i.imgur.com':
+        res = requests.get(linkContentUrl)
+        soup = bs4.BeautifulSoup(res.text, 'lxml')
+        images = soup.find_all('div', class_='post-image')[0].find_all('img')[0].get('src')[2:]
+        imgUrl = 'https://' + images
+        res_content = requests.get(imgUrl)
+        dlFile = open(os.path.join(folderName, os.path.basename(imgUrl)), 'wb')
+        for chunk in res_content.iter_content(100000):
+            dlFile.write(chunk)
+        dlFile.close()
+        print('  DOWNLOADED ' + str(i+1) + ' of ' + str(len(jsonAsPython['data']['children'])))
     # gfycat links
+    elif jsonAsPython['data']['children'][i]['data']['domain'] == 'gfycat.com':
+        res = requests.get(linkContentUrl)
+        soup = bs4.BeautifulSoup(res.text, 'lxml')
+        gfycatFile = soup.select('#main-container source')[1].get('src')
+        res_content = requests.get(gfycatFile)
+        dlFile = open(os.path.join(folderName, os.path.basename(gfycatFile)), 'wb')
+        for chunk in res_content.iter_content(100000):
+            dlFile.write(chunk)
+        dlFile.close()
+        print('  DOWNLOADED ' + str(i+1) + ' of ' + str(len(jsonAsPython['data']['children'])))
     # else
     else:
-        print('NOT A DOWNLOADABLE FILE')
-
+        print('  COULD NOT DOWNLOADED ' + str(i+1) + ' of ' + str(len(jsonAsPython['data']['children'])))
